@@ -34,3 +34,19 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## AWS Deployment Setup
+
+### Prerequisites
+1. AWS Account
+2. GitHub Repository
+
+### Manual Steps
+1. **AWS Identity**: Create an IAM User with access to app services.
+2. **GitHub Secrets**: Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to your repo settings.
+3. **Terraform State**: 
+   - Create S3 bucket with blocked public access.
+   - The backend configuration in `terraform/provider.tf` should be set to use this bucket.
+
+### Deployment
+Push to `main` branch to trigger the GitHub Action.
