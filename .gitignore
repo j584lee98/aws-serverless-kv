@@ -48,3 +48,4 @@ next-env.d.ts
 # Python
 backend.zip
 __pycache__/
+.venv/
