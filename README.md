@@ -95,6 +95,7 @@ Run the project validation script to check linting and syntax:
 ### Manual Steps
 1. **AWS Identity**: Create an IAM User with access to app services.
 2. **GitHub Secrets**: Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to your repo settings.
+   - **Custom Domain (Optional)**: Add `DOMAIN_NAME` and `CERTIFICATE_ARN` (US-East-1 ACM Cert) to automatically configure your custom domain on deploy.
 3. **Terraform State**: 
    - Create S3 bucket with blocked public access.
    - The backend configuration in `terraform/provider.tf` should be set to use this bucket.
