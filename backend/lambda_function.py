@@ -175,17 +175,18 @@ def lambda_handler(event, context):
                     user_groups = groups_claim
                 elif isinstance(groups_claim, str):
                     user_groups = [groups_claim]
-# Fallback for v1.0 payload
-        if not path and not raw_path:
-            path = event.get('path', '') # Top level path in v1.0
-        
-        
+
         # Enforce Quota
         is_admin = 'Admins' in user_groups
 
         # --- Check for document routes ---
+        # 1. Try to get path from API Gateway V2 structure
         path = event.get('requestContext', {}).get('http', {}).get('path', '')
         raw_path = event.get('rawPath', '')
+        
+        # 2. Fallback for API Gateway V1 structure
+        if not path and not raw_path:
+            path = event.get('path', '') 
         
         print(f"DEBUG: path={path}, rawPath={raw_path}")
 
