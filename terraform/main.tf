@@ -158,8 +158,82 @@ resource "aws_lambda_function" "backend" {
   environment {
     variables = {
       BEDROCK_MODEL_ID = var.bedrock_model_id
+      USER_USAGE_TABLE = aws_dynamodb_table.user_usage.name
     }
   }
+}
+
+resource "aws_iam_role_policy" "dynamodb_access" {
+  name = "dynamodb_access"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query"
+        ]
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.user_usage.arn
+      }
+    ]
+  })
+}
+
+# --- DynamoDB Table for Usage Quotas ---
+resource "aws_dynamodb_table" "user_usage" {
+  name           = "${var.project_name}-user-usage"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "user_id"
+  range_key      = "date"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "date"
+    type = "S"
+  }
+}
+
+# --- Cognito User Pool ---
+resource "aws_cognito_user_pool" "main" {
+  name = "${var.project_name}-user-pool"
+
+  password_policy {
+    minimum_length    = 8
+    require_lowercase = true
+    require_numbers   = true
+    require_symbols   = true
+    require_uppercase = true
+  }
+
+  username_attributes = ["email"]
+  auto_verified_attributes = ["email"]
+}
+
+resource "aws_cognito_user_group" "admins" {
+  name         = "Admins"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Admin users with unlimited usage"
+}
+
+resource "aws_cognito_user_pool_client" "client" {
+  name = "${var.project_name}-client"
+
+  user_pool_id = aws_cognito_user_pool.main.id
+  generate_secret = false
+  explicit_auth_flows = [
+    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH"
+  ]
 }
 
 # --- API Gateway ---
@@ -168,9 +242,9 @@ resource "aws_apigatewayv2_api" "api" {
   protocol_type = "HTTP"
   
   cors_configuration {
-    allow_origins = ["*"] # In production, lock this down to CloudFront domain
+    allow_origins = ["*"] 
     allow_methods = ["POST", "OPTIONS"]
-    allow_headers = ["content-type"]
+    allow_headers = ["content-type", "authorization"]
     max_age       = 300
   }
 }
@@ -179,6 +253,23 @@ resource "aws_apigatewayv2_stage" "api_stage" {
   api_id      = aws_apigatewayv2_api.api.id
   name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    throttling_burst_limit = 10
+    throttling_rate_limit  = 5
+  }
+}
+
+resource "aws_apigatewayv2_authorizer" "cognito_auth" {
+  api_id           = aws_apigatewayv2_api.api.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "cognito-authorizer"
+
+  jwt_configuration {
+    audience = [aws_cognito_user_pool_client.client.id]
+    issuer   = "https://${aws_cognito_user_pool.main.endpoint}"
+  }
 }
 
 resource "aws_apigatewayv2_integration" "lambda_integration" {
@@ -191,6 +282,8 @@ resource "aws_apigatewayv2_route" "chat_route" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "POST /chat"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.cognito_auth.id
+  authorization_type = "JWT"
 }
 
 # Permission for API Gateway to invoke Lambda
