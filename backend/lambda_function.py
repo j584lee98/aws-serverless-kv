@@ -40,7 +40,7 @@ def handle_documents(event, user_id, claims):
                 'body': json.dumps({'files': files})
             }
         except ClientError as e:
-            print(e)
+            print(f"Error listing files: {e}")
             return {'statusCode': 500, 'body': json.dumps({'error': 'Failed to list files'})}
 
     elif http_method == 'POST':
@@ -63,15 +63,19 @@ def handle_documents(event, user_id, claims):
             key = f"{user_id}/{filename}"
             
             # Generate presigned URL
-            presigned_url = s3_client.generate_presigned_url(
-                'put_object',
-                Params={
-                    'Bucket': vault_bucket,
-                    'Key': key,
-                    'ContentType': file_type
-                },
-                ExpiresIn=300
-            )
+            try:
+                presigned_url = s3_client.generate_presigned_url(
+                    'put_object',
+                    Params={
+                        'Bucket': vault_bucket,
+                        'Key': key,
+                        'ContentType': file_type
+                    },
+                    ExpiresIn=300
+                )
+            except Exception as e:
+                print(f"Error generating presigned URL for bucket {vault_bucket}: {e}")
+                return {'statusCode': 500, 'body': json.dumps({'error': 'Failed to generate upload URL'})}
             
             return {
                 'statusCode': 200,
@@ -79,7 +83,7 @@ def handle_documents(event, user_id, claims):
             }
 
         except Exception as e:
-            print(e)
+            print(f"Error in POST /documents: {e}")
             return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
             
     elif http_method == 'DELETE':

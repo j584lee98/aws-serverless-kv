@@ -18,6 +18,11 @@ output "cognito_user_pool_id" {
   value = aws_cognito_user_pool.main.id
 }
 
+output "knowledge_vault_bucket" {
+  description = "Name of the S3 bucket for documents"
+  value       = aws_s3_bucket.knowledge_vault.bucket
+}
+
 output "cognito_client_id" {
   value = aws_cognito_user_pool_client.client.id
 }

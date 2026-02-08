@@ -1,20 +1,27 @@
 from flask import Flask, request, make_response
-from lambda_function import lambda_handler
 import json
 import os
 import sys
 import base64
+from dotenv import load_dotenv
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# --- Load .env file for local development ---
+# This automatically finds the .env file and loads variables into os.environ
+load_dotenv()
 
-app = Flask(__name__)
-
-# Set default env vars for local testing to match Terraform defaults
+# Set default env vars BEFORE importing lambda_function
 if 'AWS_REGION' not in os.environ:
     os.environ['AWS_REGION'] = 'us-east-1'
 
 if 'KNOWLEDGE_VAULT_BUCKET' not in os.environ:
+    print("WARNING: KNOWLEDGE_VAULT_BUCKET not set. Listing/Uploading files will fail (500) if connecting to real AWS.")
     os.environ['KNOWLEDGE_VAULT_BUCKET'] = 'local-vault-bucket'
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from lambda_function import lambda_handler
+
+app = Flask(__name__)
+
 
 # Helper to decode JWT payload without verification (for local simulation only)
 def decode_jwt_payload(token):
