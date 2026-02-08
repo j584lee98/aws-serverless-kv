@@ -45,6 +45,23 @@ resource "aws_s3_bucket_policy" "frontend_bucket_policy" {
   })
 }
 
+resource "aws_s3_bucket" "knowledge_vault" {
+  bucket = "${var.project_name}-vault-${random_id.suffix.hex}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_cors_configuration" "knowledge_vault_cors" {
+  bucket = aws_s3_bucket.knowledge_vault.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT", "GET", "DELETE"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 # --- CloudFront Distribution ---
 
 resource "aws_cloudfront_origin_access_control" "default" {
@@ -164,8 +181,33 @@ resource "aws_lambda_function" "backend" {
     variables = {
       BEDROCK_MODEL_ID = var.bedrock_model_id
       USER_USAGE_TABLE = aws_dynamodb_table.user_usage.name
+      KNOWLEDGE_VAULT_BUCKET = aws_s3_bucket.knowledge_vault.bucket
     }
   }
+}
+
+resource "aws_iam_role_policy" "s3_vault_access" {
+  name = "s3_vault_access"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "s3:ListBucket",
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Effect   = "Allow"
+        Resource = [
+          aws_s3_bucket.knowledge_vault.arn,
+          "${aws_s3_bucket.knowledge_vault.arn}/*"
+        ]
+      }
+    ]
+  })
 }
 
 resource "aws_iam_role_policy" "dynamodb_access" {
@@ -286,6 +328,14 @@ resource "aws_apigatewayv2_integration" "lambda_integration" {
 resource "aws_apigatewayv2_route" "chat_route" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "POST /chat"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.cognito_auth.id
+  authorization_type = "JWT"
+}
+
+resource "aws_apigatewayv2_route" "documents_route" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "ANY /documents"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
   authorizer_id = aws_apigatewayv2_authorizer.cognito_auth.id
   authorization_type = "JWT"

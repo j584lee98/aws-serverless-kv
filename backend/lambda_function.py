@@ -5,14 +5,102 @@ import datetime
 from botocore.exceptions import ClientError
 
 bedrock_runtime = boto3.client('bedrock-runtime', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
+s3_client = boto3.client('s3', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
 dynamodb = boto3.resource('dynamodb', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
 table_name = os.environ.get('USER_USAGE_TABLE')
+vault_bucket = os.environ.get('KNOWLEDGE_VAULT_BUCKET')
+
 if table_name:
     usage_table = dynamodb.Table(table_name)
 else:
     usage_table = None
 
 DAILY_MSG_LIMIT = 20
+MAX_FILES_PER_USER = 5
+MAX_FILE_SIZE_MB = 10
+
+def handle_documents(event, user_id, claims):
+    http_method = event.get('requestContext', {}).get('http', {}).get('method')
+    
+    if http_method == 'GET':
+        # List files
+        prefix = f"{user_id}/"
+        try:
+            response = s3_client.list_objects_v2(Bucket=vault_bucket, Prefix=prefix)
+            files = []
+            if 'Contents' in response:
+                for obj in response['Contents']:
+                    files.append({
+                        'name': obj['Key'].split('/')[-1],
+                        'size': obj['Size'],
+                        'lastModified': str(obj['LastModified'])
+                    })
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'files': files})
+            }
+        except ClientError as e:
+            print(e)
+            return {'statusCode': 500, 'body': json.dumps({'error': 'Failed to list files'})}
+
+    elif http_method == 'POST':
+        # Generate Presigned URL for Upload
+        # First check count
+        prefix = f"{user_id}/"
+        try:
+            list_resp = s3_client.list_objects_v2(Bucket=vault_bucket, Prefix=prefix)
+            current_count = list_resp.get('KeyCount', 0)
+            if current_count >= MAX_FILES_PER_USER:
+                 return {'statusCode': 400, 'body': json.dumps({'error': f'Max {MAX_FILES_PER_USER} files allowed.'})}
+            
+            body = json.loads(event.get('body', '{}'))
+            filename = body.get('filename')
+            file_type = body.get('fileType')
+            
+            if not filename:
+                return {'statusCode': 400, 'body': json.dumps({'error': 'Filename required'})}
+            
+            key = f"{user_id}/{filename}"
+            
+            # Generate presigned URL
+            presigned_url = s3_client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': vault_bucket,
+                    'Key': key,
+                    'ContentType': file_type
+                },
+                ExpiresIn=300
+            )
+            
+            return {
+                'statusCode': 200,
+                'body': json.dumps({'uploadUrl': presigned_url, 'key': key})
+            }
+
+        except Exception as e:
+            print(e)
+            return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
+            
+    elif http_method == 'DELETE':
+        # Delete file
+        # Expect filename in query string or body using standard queryStringParameters 
+        # (APIGW v2 uses queryStringParameters directly in event)
+        params = event.get('queryStringParameters', {})
+        filename = params.get('filename')
+        
+        if not filename:
+             return {'statusCode': 400, 'body': json.dumps({'error': 'Filename required'})}
+             
+        key = f"{user_id}/{filename}"
+        
+        try:
+            s3_client.delete_object(Bucket=vault_bucket, Key=key)
+            return {'statusCode': 200, 'body': json.dumps({'message': 'Deleted'})}
+        except ClientError as e:
+            return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
+            
+    return {'statusCode': 405, 'body': 'Method Not Allowed'}
 
 def check_and_update_quota(user_id):
     if not usage_table:
@@ -74,6 +162,12 @@ def lambda_handler(event, context):
 
         # Enforce Quota
         is_admin = 'Admins' in user_groups
+
+        # --- Check for document routes ---
+        path = event.get('requestContext', {}).get('http', {}).get('path', '')
+        # For HTTP API, path usually contains e.g. /documents
+        if '/documents' in path:
+            return handle_documents(event, user_id, claims if 'claims' in locals() else {})
         
         if user_id != "anonymous" and not is_admin:
             allowed = check_and_update_quota(user_id)

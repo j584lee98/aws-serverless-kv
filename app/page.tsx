@@ -69,6 +69,213 @@ const SendIcon = () => (
   </svg>
 );
 
+function UploadIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+function KnowledgeVault({ onUploadError }: { onUploadError: (msg: string) => void }) {
+    const [files, setFiles] = useState<{name: string; size: number}[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const baseUrl = apiUrl.replace(/\/chat$/, "");
+
+    const fetchFiles = async () => {
+        try {
+            const session = await fetchAuthSession();
+            const token = session.tokens?.idToken?.toString();
+            if (!token) return;
+
+            const res = await fetch(`${baseUrl}/documents`, {
+                headers: { Authorization: token }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setFiles(data.files);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    useEffect(() => {
+        fetchFiles();
+    }, []);
+
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Frontend 10MB Check
+        if (file.size > 10 * 1024 * 1024) {
+            onUploadError("File size exceeds 10MB limit.");
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const session = await fetchAuthSession();
+            const token = session.tokens?.idToken?.toString();
+            if (!token) throw new Error("No session");
+
+            // 1. Get Presigned URL
+            const initRes = await fetch(`${baseUrl}/documents`, {
+                method: "POST",
+                headers: { 
+                    Authorization: token,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ 
+                    filename: file.name,
+                    fileType: file.type 
+                })
+            });
+
+            if (!initRes.ok) {
+                const err = await initRes.json();
+                throw new Error(err.error || "Upload failed");
+            }
+
+            const { uploadUrl } = await initRes.json();
+
+            // 2. Upload to S3
+            const uploadRes = await fetch(uploadUrl, {
+                method: "PUT",
+                headers: { "Content-Type": file.type },
+                body: file
+            });
+
+            if (!uploadRes.ok) throw new Error("S3 Upload failed");
+
+            // 3. Refresh list
+            await fetchFiles();
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        } catch (error) {
+             const msg = error instanceof Error ? error.message : "Upload failed";
+             onUploadError(msg);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDelete = async (filename: string) => {
+        if (!confirm(`Delete ${filename}?`)) return;
+        setIsLoading(true);
+        try {
+            const session = await fetchAuthSession();
+            const token = session.tokens?.idToken?.toString();
+            if (!token) return;
+
+            const res = await fetch(`${baseUrl}/documents?filename=${encodeURIComponent(filename)}`, {
+                method: "DELETE",
+                headers: { Authorization: token }
+            });
+            
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || "Delete failed");
+            }
+            fetchFiles();
+        } catch (error) {
+             const msg = error instanceof Error ? error.message : "Delete failed";
+             onUploadError(msg);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="w-80 bg-white flex-shrink-0 flex flex-col h-full border-r border-gray-200 shadow-sm relative z-20">
+            <div className="p-6">
+                <h2 className="text-gray-900 font-bold text-lg flex items-center gap-2">
+                    <span className="text-blue-600">📚</span> Knowledge Vault
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">Manage your context documents</p>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {files.map((file) => (
+                    <div key={file.name} className="group relative flex items-center justify-between p-3 rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200">
+                        <div className="flex flex-col min-w-0 pr-2">
+                             <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <span className="text-gray-700 text-sm font-medium truncate" title={file.name}>{file.name}</span>
+                            </div>
+                            <span className="text-gray-400 text-xs pl-6">{(file.size / 1024).toFixed(1)} KB</span>
+                        </div>
+                        <button 
+                            onClick={() => handleDelete(file.name)}
+                            disabled={isLoading}
+                            className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                            title="Delete file"
+                        >
+                            <TrashIcon />
+                        </button>
+                    </div>
+                ))}
+                {files.length === 0 && (
+                     <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                            <span className="text-2xl text-gray-400">📂</span>
+                        </div>
+                        <p className="text-gray-500 text-sm font-medium">No documents yet</p>
+                        <p className="text-gray-400 text-xs mt-1">Upload files to add context</p>
+                    </div>
+                )}
+            </div>
+
+            <div className="p-4 bg-white">
+                <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    className="hidden" 
+                    onChange={handleUpload}
+                    disabled={isLoading}
+                />
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading}
+                    className="w-full flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 hover:border-blue-400 hover:text-blue-600 rounded-xl py-3 px-4 text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                    {isLoading ? (
+                         <span className="flex items-center gap-2">
+                             <span className="w-4 h-4 border-2 border-gray-400 border-t-blue-600 rounded-full animate-spin"></span>
+                             Processing...
+                         </span>
+                    ) : (
+                        <>
+                            <UploadIcon /> 
+                            <span>Upload Document</span>
+                        </>
+                    )}
+                </button>
+                <div className="flex justify-between items-center mt-3 px-1">
+                    <p className="text-xs text-gray-400">Max 5 files (10MB ea)</p>
+                    <p className="text-xs text-gray-400">{files.length}/5 used</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function ChatInterface() {
   const { signOut } = useAuthenticator((context) => [context.user]);
   const [messages, setMessages] = useState<{ role: string; content: string }[]>(
@@ -146,9 +353,14 @@ function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 w-full">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm flex items-center justify-between sticky top-0 z-10">
+    <div className="flex h-screen bg-gray-100 w-full overflow-hidden">
+      {/* Sidebar */}
+      <KnowledgeVault onUploadError={(msg) => alert(msg)} />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col h-full min-w-0">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg shadow-md">
             <BotIcon />
@@ -264,6 +476,7 @@ function ChatInterface() {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }

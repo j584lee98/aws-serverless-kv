@@ -13,6 +13,9 @@ app = Flask(__name__)
 if 'AWS_REGION' not in os.environ:
     os.environ['AWS_REGION'] = 'us-east-1'
 
+if 'KNOWLEDGE_VAULT_BUCKET' not in os.environ:
+    os.environ['KNOWLEDGE_VAULT_BUCKET'] = 'local-vault-bucket'
+
 # Helper to decode JWT payload without verification (for local simulation only)
 def decode_jwt_payload(token):
     try:
@@ -29,24 +32,34 @@ def decode_jwt_payload(token):
         print(f"Error decoding JWT: {e}")
         return {}
 
-@app.route('/', methods=['POST', 'OPTIONS'])
-def index():
+@app.route('/<path:text>', methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+@app.route('/', defaults={'text': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+def proxy(text):
     if request.method == 'OPTIONS':
         response = make_response()
         response.headers.add("Access-Control-Allow-Origin", "*")
         response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
-        response.headers.add("Access-Control-Allow-Methods", "OPTIONS,POST")
+        response.headers.add("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
         return response
 
-    # Mock API Gateway event structure
+    # Mock API Gateway event structure (HTTP API payload 2.0 ish)
+    path = '/' + text
+    
     event = {
-        'body': request.data.decode('utf-8'),
+        'rawPath': path,
         'requestContext': {
+            'http': {
+                'method': request.method,
+                'path': path
+            },
             'authorizer': {'jwt': {'claims': {}}}
-        }
+        },
+        'queryStringParameters': request.args.to_dict(),
+        'body': request.data.decode('utf-8') if request.data else '{}'
     }
     
     # Extract Authorization header
+
     auth_header = request.headers.get('Authorization')
     if auth_header:
         # If the header mimics "Bearer <token>", strip "Bearer "
