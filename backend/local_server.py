@@ -90,6 +90,11 @@ def proxy(text):
     # Forward headers returned by Lambda
     for key, value in headers.items():
         resp.headers[key] = value
+
+    # Ensure CORS headers are present on all responses (fix for local dev)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         
     return resp
 
