@@ -90,8 +90,13 @@ resource "aws_cloudfront_distribution" "frontend_distribution" {
     }
   }
 
+  aliases = var.domain_name != "" ? [var.domain_name] : []
+
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = var.certificate_arn == "" ? true : false
+    acm_certificate_arn            = var.certificate_arn != "" ? var.certificate_arn : null
+    ssl_support_method             = var.certificate_arn != "" ? "sni-only" : null
+    minimum_protocol_version       = var.certificate_arn != "" ? "TLSv1.2_2021" : null
   }
 }
 
