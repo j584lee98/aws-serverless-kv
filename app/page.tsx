@@ -271,7 +271,7 @@ function ChatInterface() {
 export default function Home() {
   return (
     <div className="grid min-h-screen place-items-center bg-white">
-      <Authenticator>
+      <Authenticator loginMechanisms={['email']} signUpAttributes={['email']}>
         <ChatInterface />
       </Authenticator>
     </div>
