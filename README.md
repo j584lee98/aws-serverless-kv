@@ -1,39 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AWS Serverless AI Chatbot
 
-## Getting Started
+A serverless chatbot application built with Next.js, Python Lambda, API Gateway, and Amazon Bedrock. It features authentication, message quotas, and a secure infrastructure managed by Terraform.
 
-First, run the development server:
+## 🏗 Architecture
+
+- **Frontend**: Next.js 14 (App Router) hosted on S3 + CloudFront.
+- **Auth**: Amazon Cognito (User Pools & Identity).
+- **Backend**: AWS Lambda (Python 3.12) handling business logic.
+- **AI Model**: Amazon Bedrock (default: Amazon Nova Lite).
+- **Database**: DynamoDB for tracking user activity and enforcing quotas.
+- **API**: API Gateway (HTTP API) with JWT Authorizer.
+- **Infrastructure**: Terraform for full "Infrastructure as Code".
+
+## 🚀 Features
+
+- **AI Chat**: Interactive chat interface powered by Bedrock.
+- **Authentication**: Secure sign-up/sign-in via Cognito.
+- **Rate Limiting**:
+  - Global API throttling (Burst/Rate limits at Gateway).
+  - User-level daily message quotas (tracked in DynamoDB).
+- **Unlimited Admin Access**: Specific users (in "Admins" group) bypass quotas.
+- **Local Development**: Full local simulation including Auth & Backend.
+
+## 🛠️ Installation & Deployment
+
+### Prerequisites
+- AWS Account & CLI configured (`aws configure`)
+- Terraform installed
+- Node.js & npm installed
+- Python 3.12 installed
+
+### 1. Deploy Infrastructure
+All AWS resources are managed via Terraform.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd terraform
+terraform init
+terraform apply
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+After deployment, note the outputs:
+- `api_url`
+- `cloudfront_domain_name` (Your public URL)
+- `cognito_user_pool_id`
+- `cognito_client_id`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Configure Frontend
+The GitHub Action automatically handles this for CI/CD. For manual deployment or local dev, create a `.env.local` file:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+NEXT_PUBLIC_API_URL=<your-api-url-from-output>
+NEXT_PUBLIC_USER_POOL_ID=<your-user-pool-id>
+NEXT_PUBLIC_USER_POOL_CLIENT_ID=<your-client-id>
+```
 
-## Learn More
+### 3. Run Locally
 
-To learn more about Next.js, take a look at the following resources:
+**Frontend**:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Backend (Local Simulation)**:
+```bash
+pip install flask boto3
+python backend/local_server.py
+```
+Open [http://localhost:3000](http://localhost:3000).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🛡️ Admins & Quotas
 
-## Deploy on Vercel
+By default, all users are limited to 50 messages/day. To grant unlimited access:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Go to AWS Console -> Cognito -> User Pools.
+2. Select your user -> Groups.
+3. Add user to the **"Admins"** group.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## ✅ Validation
+
+Run the project validation script to check linting and syntax:
+
+```bash
+# Git Bash / Linux
+./validate.sh
+```
 
 ## AWS Deployment Setup
 
