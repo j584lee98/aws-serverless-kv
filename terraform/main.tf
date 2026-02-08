@@ -334,9 +334,25 @@ resource "aws_apigatewayv2_route" "chat_route" {
   authorization_type = "JWT"
 }
 
-resource "aws_apigatewayv2_route" "documents_route" {
+resource "aws_apigatewayv2_route" "documents_get" {
   api_id    = aws_apigatewayv2_api.api.id
-  route_key = "ANY /documents"
+  route_key = "GET /documents"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.cognito_auth.id
+  authorization_type = "JWT"
+}
+
+resource "aws_apigatewayv2_route" "documents_post" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "POST /documents"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.cognito_auth.id
+  authorization_type = "JWT"
+}
+
+resource "aws_apigatewayv2_route" "documents_delete" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "DELETE /documents"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
   authorizer_id = aws_apigatewayv2_authorizer.cognito_auth.id
   authorization_type = "JWT"
