@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Amplify } from "aws-amplify";
 import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
 import { fetchAuthSession } from "aws-amplify/auth";
@@ -96,7 +96,8 @@ function KnowledgeVault({ onUploadError }: { onUploadError: (msg: string) => voi
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const baseUrl = apiUrl.replace(/\/chat$/, "");
 
-    const fetchFiles = async () => {
+    // Memoize fetchFiles to avoid dependency warnings
+    const fetchFiles = React.useCallback(async () => {
         try {
             const session = await fetchAuthSession();
             const token = session.tokens?.idToken?.toString();
@@ -112,11 +113,11 @@ function KnowledgeVault({ onUploadError }: { onUploadError: (msg: string) => voi
         } catch (e) {
             console.error(e);
         }
-    };
+    }, [baseUrl]);
 
     useEffect(() => {
         fetchFiles();
-    }, []);
+    }, [fetchFiles]);
 
     const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];

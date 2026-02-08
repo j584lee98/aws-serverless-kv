@@ -57,8 +57,8 @@ def handle_documents(event, user_id, claims):
             filename = body.get('filename')
             file_type = body.get('fileType')
             
-            if not filename:
-                return {'statusCode': 400, 'body': json.dumps({'error': 'Filename required'})}
+            if not filename or '/' in filename:
+                return {'statusCode': 400, 'body': json.dumps({'error': 'Invalid filename'})}
             
             key = f"{user_id}/{filename}"
             

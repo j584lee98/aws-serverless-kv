@@ -124,6 +124,7 @@ data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../backend"
   output_path = "${path.module}/backend.zip"
+  excludes    = ["__pycache__", ".venv", ".env", ".env.example", ".git", ".gitignore", "local_server.py", "requirements.txt"]
 }
 
 resource "aws_iam_role" "lambda_role" {
