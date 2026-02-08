@@ -202,13 +202,6 @@ function KnowledgeVault({ onUploadError }: { onUploadError: (msg: string) => voi
 
     return (
         <div className="w-80 bg-white flex-shrink-0 flex flex-col h-full border-r border-gray-200 shadow-sm relative z-20">
-            <div className="p-6">
-                <h2 className="text-gray-900 font-bold text-lg flex items-center gap-2">
-                    <span className="text-blue-600">📚</span> Knowledge Vault
-                </h2>
-                <p className="text-xs text-gray-500 mt-1">Manage your context documents</p>
-            </div>
-            
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {files.map((file) => (
                     <div key={file.name} className="group relative flex items-center justify-between p-3 rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200">
@@ -360,22 +353,18 @@ function ChatInterface() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full min-w-0">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm flex items-center justify-between z-10">
+        <header className="bg-gray-100 px-6 py-4 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg shadow-md">
             <BotIcon />
             </div>
             <div>
-            <h1 className="text-xl font-bold text-gray-800">AI Assistant</h1>
-            <p className="text-xs text-gray-500 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse"></span>
-                Online
-            </p>
+            <h1 className="text-xl font-bold text-gray-800">Knowledge Vault</h1>
             </div>
         </div>
         <button 
            onClick={signOut}
-           className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1 border rounded"
+           className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1 border rounded cursor-pointer hover:bg-gray-200 transition-colors"
         >
             Sign Out
         </button>
@@ -450,7 +439,7 @@ function ChatInterface() {
       </div>
 
       {/* Input Area */}
-      <div className="bg-white border-t border-gray-200 p-4 sticky bottom-0">
+      <div className="bg-gray-100 p-4 sticky bottom-0">
         <div className="max-w-4xl mx-auto">
           <form onSubmit={handleSubmit} className="relative flex items-center">
             <input
@@ -458,13 +447,13 @@ function ChatInterface() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Message AI Assistant..."
-              className="w-full bg-gray-50 text-gray-900 border border-gray-300 rounded-full py-3 pl-5 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
+              className="w-full bg-white text-gray-900 border border-gray-300 rounded-full py-3 pl-5 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-sm"
               disabled={isLoading}
             />
             <button
               type="submit"
               disabled={isLoading || !input.trim()}
-              className="absolute right-2 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors shadow-sm"
+              className="absolute right-2 p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors shadow-sm cursor-pointer disabled:cursor-not-allowed"
             >
               <SendIcon />
             </button>
