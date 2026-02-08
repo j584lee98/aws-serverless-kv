@@ -1,6 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Amplify } from "aws-amplify";
+import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
+import { fetchAuthSession } from "aws-amplify/auth";
+import "@aws-amplify/ui-react/styles.css";
+
+// Configure Amplify
+Amplify.configure({
+  Auth: {
+    Cognito: {
+      userPoolId: process.env.NEXT_PUBLIC_USER_POOL_ID || "",
+      userPoolClientId: process.env.NEXT_PUBLIC_USER_POOL_CLIENT_ID || "",
+    },
+  },
+});
 
 // Icons
 const BotIcon = () => (
@@ -55,7 +69,8 @@ const SendIcon = () => (
   </svg>
 );
 
-export default function Home() {
+function ChatInterface() {
+  const { signOut } = useAuthenticator((context) => [context.user]);
   const [messages, setMessages] = useState<{ role: string; content: string }[]>(
     []
   );
@@ -81,18 +96,30 @@ export default function Home() {
     setIsLoading(true);
 
     try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+      
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
       const url = apiUrl || "http://localhost:8000";
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (token) {
+        headers["Authorization"] = token;
+      }
+
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({ message: input }),
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+           throw new Error("Daily message limit exceeded.");
+        }
         throw new Error("Failed to fetch response");
       }
 
@@ -101,11 +128,16 @@ export default function Home() {
       setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
       console.error(error);
+      const start = "Daily message limit exceeded";
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isQuota = errorMessage.includes(start);
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "Sorry, I am having trouble connecting to the backend right now.",
+          content: isQuota 
+            ? "You have reached your daily message limit. Please try again tomorrow." 
+            : "Sorry, I am having trouble connecting to the backend right now.",
         },
       ]);
     } finally {
@@ -114,19 +146,27 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
+    <div className="flex flex-col h-screen bg-gray-100 w-full">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm flex items-center gap-3 sticky top-0 z-10">
-        <div className="bg-blue-600 p-2 rounded-lg shadow-md">
-          <BotIcon />
+      <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+            <div className="bg-blue-600 p-2 rounded-lg shadow-md">
+            <BotIcon />
+            </div>
+            <div>
+            <h1 className="text-xl font-bold text-gray-800">AI Assistant</h1>
+            <p className="text-xs text-gray-500 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse"></span>
+                Online
+            </p>
+            </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">AI Assistant</h1>
-          <p className="text-xs text-gray-500 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse"></span>
-            Online
-          </p>
-        </div>
+        <button 
+           onClick={signOut}
+           className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1 border rounded"
+        >
+            Sign Out
+        </button>
       </header>
 
       {/* Chat Area */}
@@ -224,6 +264,16 @@ export default function Home() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-white">
+      <Authenticator>
+        <ChatInterface />
+      </Authenticator>
     </div>
   );
 }
