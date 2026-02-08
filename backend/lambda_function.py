@@ -19,7 +19,7 @@ DAILY_MSG_LIMIT = 20
 MAX_FILES_PER_USER = 5
 MAX_FILE_SIZE_MB = 10
 
-def handle_documents(event, user_id, claims):
+def handle_documents(event, user_id, claims, headers):
     http_method = event.get('requestContext', {}).get('http', {}).get('method')
     
     if http_method == 'GET':
@@ -37,11 +37,12 @@ def handle_documents(event, user_id, claims):
                     })
             return {
                 'statusCode': 200,
+                'headers': headers,
                 'body': json.dumps({'files': files})
             }
         except ClientError as e:
             print(f"Error listing files: {e}")
-            return {'statusCode': 500, 'body': json.dumps({'error': 'Failed to list files'})}
+            return {'statusCode': 500, 'headers': headers, 'body': json.dumps({'error': 'Failed to list files'})}
 
     elif http_method == 'POST':
         # Generate Presigned URL for Upload
@@ -51,14 +52,14 @@ def handle_documents(event, user_id, claims):
             list_resp = s3_client.list_objects_v2(Bucket=vault_bucket, Prefix=prefix)
             current_count = list_resp.get('KeyCount', 0)
             if current_count >= MAX_FILES_PER_USER:
-                 return {'statusCode': 400, 'body': json.dumps({'error': f'Max {MAX_FILES_PER_USER} files allowed.'})}
+                 return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': f'Max {MAX_FILES_PER_USER} files allowed.'})}
             
             body = json.loads(event.get('body', '{}'))
             filename = body.get('filename')
             file_type = body.get('fileType')
             
             if not filename or '/' in filename:
-                return {'statusCode': 400, 'body': json.dumps({'error': 'Invalid filename'})}
+                return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'Invalid filename'})}
             
             key = f"{user_id}/{filename}"
             
@@ -75,16 +76,17 @@ def handle_documents(event, user_id, claims):
                 )
             except Exception as e:
                 print(f"Error generating presigned URL for bucket {vault_bucket}: {e}")
-                return {'statusCode': 500, 'body': json.dumps({'error': 'Failed to generate upload URL'})}
+                return {'statusCode': 500, 'headers': headers, 'body': json.dumps({'error': 'Failed to generate upload URL'})}
             
             return {
                 'statusCode': 200,
+                'headers': headers,
                 'body': json.dumps({'uploadUrl': presigned_url, 'key': key})
             }
 
         except Exception as e:
             print(f"Error in POST /documents: {e}")
-            return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
+            return {'statusCode': 500, 'headers': headers, 'body': json.dumps({'error': str(e)})}
             
     elif http_method == 'DELETE':
         # Delete file
@@ -94,17 +96,17 @@ def handle_documents(event, user_id, claims):
         filename = params.get('filename')
         
         if not filename:
-             return {'statusCode': 400, 'body': json.dumps({'error': 'Filename required'})}
+             return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'Filename required'})}
              
         key = f"{user_id}/{filename}"
         
         try:
             s3_client.delete_object(Bucket=vault_bucket, Key=key)
-            return {'statusCode': 200, 'body': json.dumps({'message': 'Deleted'})}
+            return {'statusCode': 200, 'headers': headers, 'body': json.dumps({'message': 'Deleted'})}
         except ClientError as e:
-            return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
+            return {'statusCode': 500, 'headers': headers, 'body': json.dumps({'error': str(e)})}
             
-    return {'statusCode': 405, 'body': 'Method Not Allowed'}
+    return {'statusCode': 405, 'headers': headers, 'body': 'Method Not Allowed'}
 
 def check_and_update_quota(user_id):
     if not usage_table:
@@ -169,9 +171,13 @@ def lambda_handler(event, context):
 
         # --- Check for document routes ---
         path = event.get('requestContext', {}).get('http', {}).get('path', '')
+        raw_path = event.get('rawPath', '')
+        
+        print(f"DEBUG: path={path}, rawPath={raw_path}")
+
         # For HTTP API, path usually contains e.g. /documents
-        if '/documents' in path:
-            return handle_documents(event, user_id, claims if 'claims' in locals() else {})
+        if '/documents' in path or '/documents' in raw_path:
+            return handle_documents(event, user_id, claims if 'claims' in locals() else {}, headers)
         
         if user_id != "anonymous" and not is_admin:
             allowed = check_and_update_quota(user_id)
@@ -189,7 +195,7 @@ def lambda_handler(event, context):
             return {
                 'statusCode': 400,
                 'headers': headers,
-                'body': json.dumps({'error': 'No body provided'})
+                'body': json.dumps({'error': 'No body provided for Chatbot request (Fallthrough)'})
             }
             
         if not user_message:
