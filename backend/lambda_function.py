@@ -21,6 +21,8 @@ MAX_FILE_SIZE_MB = 10
 
 def handle_documents(event, user_id, claims, headers):
     http_method = event.get('requestContext', {}).get('http', {}).get('method')
+    if not http_method:
+        http_method = event.get('httpMethod')
     
     if http_method == 'GET':
         # List files
@@ -152,20 +154,32 @@ def lambda_handler(event, context):
         user_groups = []
         
         # API Gateway HTTP API with JWT Authorizer puts claims in requestContext
+        # Handle both v2.0 (inside 'jwt') and v1.0 (direct in 'authorizer') payload formats
         if 'requestContext' in event and 'authorizer' in event['requestContext']:
-            jwt = event['requestContext']['authorizer'].get('jwt')
-            if jwt:
+            auth_context = event['requestContext']['authorizer']
+            
+            # Try v2.0 structure first
+            jwt = auth_context.get('jwt')
+            if jwt and 'claims' in jwt:
                 claims = jwt.get('claims')
-                if claims:
-                    user_id = claims.get('sub') # standard cognito user id
-                    
-                    # 'cognito:groups' can be a list or a string depending on number of groups
-                    groups_claim = claims.get('cognito:groups', [])
-                    if isinstance(groups_claim, list):
-                        user_groups = groups_claim
-                    elif isinstance(groups_claim, str):
-                        user_groups = [groups_claim]
-
+            # Fallback to v1.0 structure (or direct claims)
+            elif 'claims' in auth_context:
+                claims = auth_context.get('claims')
+            
+            if claims:
+                user_id = claims.get('sub') # standard cognito user id
+                
+                # 'cognito:groups' can be a list or a string depending on number of groups
+                groups_claim = claims.get('cognito:groups', [])
+                if isinstance(groups_claim, list):
+                    user_groups = groups_claim
+                elif isinstance(groups_claim, str):
+                    user_groups = [groups_claim]
+# Fallback for v1.0 payload
+        if not path and not raw_path:
+            path = event.get('path', '') # Top level path in v1.0
+        
+        
         # Enforce Quota
         is_admin = 'Admins' in user_groups
 
