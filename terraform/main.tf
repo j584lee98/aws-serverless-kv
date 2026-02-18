@@ -50,6 +50,23 @@ resource "aws_s3_bucket" "knowledge_vault" {
   force_destroy = true
 }
 
+# Use Intelligent Tiering to automatically move infrequently-accessed documents
+# to lower-cost storage classes (S3 Standard-IA → S3 Intelligent-Tiering).
+resource "aws_s3_bucket_intelligent_tiering_configuration" "vault_tiering" {
+  bucket = aws_s3_bucket.knowledge_vault.id
+  name   = "entire-bucket"
+
+  tiering {
+    access_tier = "ARCHIVE_ACCESS"
+    days        = 90
+  }
+
+  tiering {
+    access_tier = "DEEP_ARCHIVE_ACCESS"
+    days        = 180
+  }
+}
+
 resource "aws_s3_bucket_cors_configuration" "knowledge_vault_cors" {
   bucket = aws_s3_bucket.knowledge_vault.id
 
@@ -184,6 +201,7 @@ resource "aws_lambda_function" "backend" {
       USER_USAGE_TABLE       = aws_dynamodb_table.user_usage.name
       KNOWLEDGE_VAULT_BUCKET = aws_s3_bucket.knowledge_vault.bucket
       CHUNKS_TABLE           = aws_dynamodb_table.document_chunks.name
+      DOCUMENT_STATUS_TABLE  = aws_dynamodb_table.document_status.name
     }
   }
 }

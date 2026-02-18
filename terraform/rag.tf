@@ -59,7 +59,7 @@ resource "aws_iam_role_policy_attachment" "doc_processor_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# S3 read access (download the uploaded file)
+# S3 read access (download the uploaded file; Textract also reads from S3)
 resource "aws_iam_role_policy" "doc_processor_s3" {
   name = "doc_processor_s3"
   role = aws_iam_role.doc_processor_role.id
@@ -68,14 +68,8 @@ resource "aws_iam_role_policy" "doc_processor_s3" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject", "s3:HeadObject"]
-        Resource = "${aws_s3_bucket.knowledge_vault.arn}/*"
-      },
-      {
-        # Textract async jobs need to read the document too
         Effect   = "Allow"
-        Action   = ["s3:GetObject"]
+        Action   = ["s3:GetObject", "s3:HeadObject"]
         Resource = "${aws_s3_bucket.knowledge_vault.arn}/*"
       }
     ]
@@ -116,23 +110,34 @@ resource "aws_iam_role_policy" "doc_processor_textract" {
   })
 }
 
-# DynamoDB – write chunks
+# DynamoDB – write chunks and update processing status
 resource "aws_iam_role_policy" "doc_processor_dynamodb" {
   name = "doc_processor_dynamodb"
   role = aws_iam_role.doc_processor_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "dynamodb:PutItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:Query",
-        "dynamodb:BatchWriteItem"
-      ]
-      Resource = aws_dynamodb_table.document_chunks.arn
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:BatchWriteItem"
+        ]
+        Resource = aws_dynamodb_table.document_chunks.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:GetItem"
+        ]
+        Resource = aws_dynamodb_table.document_status.arn
+      }
+    ]
   })
 }
 
@@ -160,6 +165,7 @@ resource "aws_lambda_function" "document_processor" {
   environment {
     variables = {
       CHUNKS_TABLE           = aws_dynamodb_table.document_chunks.name
+      DOCUMENT_STATUS_TABLE  = aws_dynamodb_table.document_status.name
       KNOWLEDGE_VAULT_BUCKET = aws_s3_bucket.knowledge_vault.bucket
       AWS_REGION_NAME        = var.aws_region
     }
@@ -213,13 +219,52 @@ resource "aws_iam_role_policy" "chat_lambda_embedding" {
         Resource = "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v2:0"
       },
       {
-        # Allow the chat Lambda to query the chunks table for RAG search
+        # RAG search: read all chunks for a user
         Effect = "Allow"
         Action = ["dynamodb:Query"]
         Resource = aws_dynamodb_table.document_chunks.arn
+      },
+      {
+        # Read processing status for GET /documents + purge on DELETE
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:DeleteItem",
+          "dynamodb:BatchWriteItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.document_status.arn,
+          aws_dynamodb_table.document_chunks.arn
+        ]
       }
     ]
   })
+}
+
+# -----------------------------------------------------------------------------
+# Document Status Table
+# -----------------------------------------------------------------------------
+resource "aws_dynamodb_table" "document_status" {
+  name         = "${var.project_name}-document-status"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = "doc_key"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "doc_key"
+    type = "S"
+  }
+
+  tags = {
+    Project = var.project_name
+    Purpose = "RAG document processing status"
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -228,6 +273,11 @@ resource "aws_iam_role_policy" "chat_lambda_embedding" {
 output "document_chunks_table" {
   description = "DynamoDB table storing RAG document chunks"
   value       = aws_dynamodb_table.document_chunks.name
+}
+
+output "document_status_table" {
+  description = "DynamoDB table tracking per-document indexing status"
+  value       = aws_dynamodb_table.document_status.name
 }
 
 output "document_processor_function" {
