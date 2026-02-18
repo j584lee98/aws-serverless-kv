@@ -124,7 +124,7 @@ data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = "${path.module}/../backend"
   output_path = "${path.module}/backend.zip"
-  excludes    = ["__pycache__", ".venv", ".env", ".env.example", ".git", ".gitignore", "local_server.py", "requirements.txt"]
+  excludes    = ["__pycache__", ".venv", ".env", ".env.example", ".git", ".gitignore", "local_server.py", "requirements.txt", "document_processor.py"]
 }
 
 resource "aws_iam_role" "lambda_role" {
@@ -180,9 +180,10 @@ resource "aws_lambda_function" "backend" {
 
   environment {
     variables = {
-      BEDROCK_MODEL_ID = var.bedrock_model_id
-      USER_USAGE_TABLE = aws_dynamodb_table.user_usage.name
+      BEDROCK_MODEL_ID       = var.bedrock_model_id
+      USER_USAGE_TABLE       = aws_dynamodb_table.user_usage.name
       KNOWLEDGE_VAULT_BUCKET = aws_s3_bucket.knowledge_vault.bucket
+      CHUNKS_TABLE           = aws_dynamodb_table.document_chunks.name
     }
   }
 }
