@@ -22,10 +22,8 @@ import json
 import os
 import re
 import time
-import uuid
 import boto3
 from botocore.exceptions import ClientError
-from decimal import Decimal
 
 # ---------------------------------------------------------------------------
 # AWS clients
@@ -38,12 +36,47 @@ textract_client  = boto3.client("textract",        region_name=REGION)
 dynamodb         = boto3.resource("dynamodb",       region_name=REGION)
 
 CHUNKS_TABLE           = os.environ.get("CHUNKS_TABLE")
+DOCUMENT_STATUS_TABLE  = os.environ.get("DOCUMENT_STATUS_TABLE")
 KNOWLEDGE_VAULT_BUCKET = os.environ.get("KNOWLEDGE_VAULT_BUCKET")
 EMBEDDING_MODEL_ID     = "amazon.titan-embed-text-v2:0"
+
+# Hard guardrails – must stay in sync with lambda_function.py constants
+MAX_FILE_SIZE_MB   = 10
+ALLOWED_EXTENSIONS = {
+    "pdf", "docx", "txt", "csv", "md",
+    "png", "jpg", "jpeg", "tiff",
+}
 
 # Chunking parameters
 CHUNK_SIZE    = 500   # target characters per chunk
 CHUNK_OVERLAP = 100   # overlap between consecutive chunks
+
+# ---------------------------------------------------------------------------
+# Document status helpers
+# ---------------------------------------------------------------------------
+
+def _update_status(user_id: str, doc_key: str, status: str,
+                   chunk_count: int = 0, error: str = ""):
+    """
+    Write a processing status record to the document_status DynamoDB table.
+    Statuses: 'processing' | 'indexed' | 'error'
+    Silently no-ops when DOCUMENT_STATUS_TABLE is not configured.
+    """
+    if not DOCUMENT_STATUS_TABLE:
+        return
+    table = dynamodb.Table(DOCUMENT_STATUS_TABLE)
+    item = {
+        "user_id":      user_id,
+        "doc_key":      doc_key,
+        "filename":     doc_key.split("/")[-1],
+        "status":       status,
+        "chunk_count":  chunk_count,
+        "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    if error:
+        item["error"] = error
+    table.put_item(Item=item)
+
 
 # ---------------------------------------------------------------------------
 # Text extraction helpers
@@ -294,6 +327,28 @@ def lambda_handler(event, context):
         user_id, filename = parts
 
         try:
+            # 0. Mark document as processing
+            _update_status(user_id, key, "processing")
+
+            # Guard: check file extension
+            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if ext not in ALLOWED_EXTENSIONS:
+                msg = f"Unsupported file type '.{ext}'. Skipping."
+                print(msg)
+                _update_status(user_id, key, "error", error=msg)
+                results.append({"key": key, "status": "error", "error": msg})
+                continue
+
+            # Guard: check file size before downloading
+            head = s3_client.head_object(Bucket=bucket, Key=key)
+            size_bytes = head.get("ContentLength", 0)
+            if size_bytes > MAX_FILE_SIZE_MB * 1024 * 1024:
+                msg = f"File exceeds {MAX_FILE_SIZE_MB} MB limit ({size_bytes / 1024 / 1024:.1f} MB). Skipping."
+                print(msg)
+                _update_status(user_id, key, "error", error=msg)
+                results.append({"key": key, "status": "error", "error": msg})
+                continue
+
             # 1. Extract text
             raw_text = extract_text(bucket, key)
             print(f"Extracted {len(raw_text)} characters from {filename}")
@@ -316,10 +371,12 @@ def lambda_handler(event, context):
                 store_chunk(table, user_id, key, chunk_idx, chunk_body, embedding)
 
             print(f"Stored {len(chunks)} chunks for {key}")
+            _update_status(user_id, key, "indexed", chunk_count=len(chunks))
             results.append({"key": key, "status": "ok", "chunks": len(chunks)})
 
         except Exception as e:
             print(f"Error processing {key}: {e}")
+            _update_status(user_id, key, "error", error=str(e))
             results.append({"key": key, "status": "error", "error": str(e)})
 
     return {"processed": results}
