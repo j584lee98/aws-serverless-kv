@@ -17,6 +17,14 @@ if 'KNOWLEDGE_VAULT_BUCKET' not in os.environ:
     print("WARNING: KNOWLEDGE_VAULT_BUCKET not set. Listing/Uploading files will fail (500) if connecting to real AWS.")
     os.environ['KNOWLEDGE_VAULT_BUCKET'] = 'local-vault-bucket'
 
+if 'CHUNKS_TABLE' not in os.environ:
+    print("WARNING: CHUNKS_TABLE not set. RAG retrieval will be skipped in local dev.")
+    os.environ['CHUNKS_TABLE'] = ''
+
+if 'DOCUMENT_STATUS_TABLE' not in os.environ:
+    print("WARNING: DOCUMENT_STATUS_TABLE not set. Document status lookups will be skipped in local dev.")
+    os.environ['DOCUMENT_STATUS_TABLE'] = ''
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from lambda_function import lambda_handler
 
