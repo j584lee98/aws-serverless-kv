@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Amplify } from "aws-amplify";
 import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
 import { fetchAuthSession } from "aws-amplify/auth";
@@ -476,7 +478,15 @@ function ChatInterface() {
                       ? "bg-indigo-600 text-white rounded-tr-none"
                       : "bg-white text-gray-800 border border-gray-100 rounded-tl-none"
                   }`}>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <div className={`prose prose-sm max-w-none ${
+                      msg.role === "user"
+                        ? "prose-invert"
+                        : "prose-gray"
+                    }`}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
                     {msg.role === "assistant" && msg.sources && (
                       <SourcesPanel sources={msg.sources} />
                     )}

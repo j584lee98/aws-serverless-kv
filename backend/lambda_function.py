@@ -462,6 +462,16 @@ def lambda_handler(event, context):
         augmented_message = build_rag_prompt(user_message, context_chunks)
 
         request_body = json.dumps({
+            "system": [
+                {
+                    "text": (
+                        "You are a helpful AI assistant. "
+                        "Always respond using Markdown formatting. "
+                        "Use headers, bullet points, bold/italic text, code blocks, "
+                        "and tables where appropriate to make your responses clear and well-structured."
+                    )
+                }
+            ],
             "messages": [
                 {
                     "role": "user",
