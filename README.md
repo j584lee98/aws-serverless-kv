@@ -1,37 +1,63 @@
-# AWS Serverless AI Chatbot
+# AWS-native Knowledge Vault
 
-A serverless chatbot application built with Next.js, Python Lambda, API Gateway, and Amazon Bedrock. It features authentication, message quotas, and a secure infrastructure managed by Terraform.
+An AWS-native serverless application that enables users to securely upload personal documents and query them through a RAG-powered conversational interface.
 
-## 🏗 Architecture
+---
 
-- **Frontend**: Next.js 14 (App Router) hosted on S3 + CloudFront.
-- **Auth**: Amazon Cognito (User Pools & Identity).
-- **Backend**: AWS Lambda (Python 3.12) handling business logic.
-- **AI Model**: Amazon Bedrock (default: Amazon Nova Lite).
-- **Database**: DynamoDB for tracking user activity and enforcing quotas.
-- **API**: API Gateway (HTTP API) with JWT Authorizer.
-- **Infrastructure**: Terraform for full "Infrastructure as Code".
+## Tech Stack
 
-## 🚀 Features
+**Application**
 
-- **AI Chat**: Interactive chat interface powered by Bedrock.
-- **Authentication**: Secure sign-up/sign-in via Cognito.
-- **Rate Limiting**:
-  - Global API throttling (Burst/Rate limits at Gateway).
-  - User-level daily message quotas (tracked in DynamoDB).
-- **Unlimited Admin Access**: Specific users (in "Admins" group) bypass quotas.
-- **Local Development**: Full local simulation including Auth & Backend.
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 15 (App Router, static export), Tailwind CSS |
+| Auth UI | AWS Amplify UI React |
+| Backend | Python 3.12 (AWS Lambda) |
+| Infrastructure | Terraform |
 
-## 🛠️ Installation & Deployment
+**AWS Services**
 
-### Prerequisites
-- AWS Account & CLI configured (`aws configure`)
-- Terraform installed
-- Node.js & npm installed
-- Python 3.12 installed
+| Service | Purpose |
+|---|---|
+| Amazon Cognito | Email/password sign-up and sign-in, JWT issuance |
+| API Gateway (HTTP API) | REST API with JWT authorizer |
+| AWS Lambda | Chat handler and document processor |
+| Amazon S3 | Frontend hosting and document vault |
+| Amazon CloudFront | CDN for the frontend |
+| Amazon Bedrock | Nova Lite (LLM) + Titan Text Embeddings v2 |
+| Amazon Textract | Text extraction from PDF, DOCX, and images |
+| Amazon DynamoDB | Document chunks/embeddings, processing status, usage quotas |
 
-### 1. Deploy Infrastructure
-All AWS resources are managed via Terraform.
+---
+
+## Local Development
+
+**Prerequisites:** Node.js ≥ 18, Python 3.12, AWS CLI configured with credentials that have access to the deployed AWS resources.
+
+**Frontend**
+
+```bash
+npm install
+npm run dev    # http://localhost:3000
+```
+
+**Backend**
+
+```bash
+cd backend
+pip install flask boto3 python-dotenv
+python local_server.py    # http://localhost:8000
+```
+
+Create `backend/.env` with your deployed resource values (see Environment Variables below). Set `NEXT_PUBLIC_API_URL=http://localhost:8000/chat` in `.env.local` to point the frontend at the local server.
+
+---
+
+## Deployment
+
+**Prerequisites:** Terraform ≥ 1.5, AWS CLI configured.
+
+Before first deploy, create an S3 bucket for Terraform state and update the `bucket` value in `terraform/provider.tf`.
 
 ```bash
 cd terraform
@@ -39,66 +65,65 @@ terraform init
 terraform apply
 ```
 
-After deployment, note the outputs:
-- `api_url`
-- `cloudfront_domain_name` (Your public URL)
-- `cognito_user_pool_id`
-- `cognito_client_id`
+Terraform outputs the values needed for the frontend environment variables.
 
-### 2. Configure Frontend
-The GitHub Action automatically handles this for CI/CD. For manual deployment or local dev, create a `.env.local` file:
+---
 
-```env
-NEXT_PUBLIC_API_URL=<your-api-url-from-output>
-NEXT_PUBLIC_USER_POOL_ID=<your-user-pool-id>
-NEXT_PUBLIC_USER_POOL_CLIENT_ID=<your-client-id>
-```
+## Environment Variables
 
-### 3. Run Locally
+**`.env.local`** — frontend (not committed)
 
-**Frontend**:
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | API Gateway URL with `/chat` suffix |
+| `NEXT_PUBLIC_USER_POOL_ID` | Cognito User Pool ID |
+| `NEXT_PUBLIC_USER_POOL_CLIENT_ID` | Cognito App Client ID |
+
+**`backend/.env`** — local backend simulation (not committed)
+
+| Variable | Description |
+|---|---|
+| `AWS_REGION` | AWS region (e.g. `us-east-1`) |
+| `KNOWLEDGE_VAULT_BUCKET` | S3 vault bucket name |
+| `USER_USAGE_TABLE` | DynamoDB usage quotas table name |
+| `CHUNKS_TABLE` | DynamoDB document chunks table name |
+| `DOCUMENT_STATUS_TABLE` | DynamoDB document status table name |
+| `BEDROCK_MODEL_ID` | Bedrock model ID (default: `amazon.nova-lite-v1:0`) |
+
+**GitHub Secrets** — required for CI/CD
+
+| Secret | Description |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | IAM user access key |
+| `AWS_SECRET_ACCESS_KEY` | IAM user secret key |
+| `DOMAIN_NAME` | *(Optional)* Custom domain for CloudFront |
+| `CERTIFICATE_ARN` | *(Optional)* ACM certificate ARN (must be in us-east-1) |
+
+---
+
+## CI/CD
+
+Pushing to `main` triggers the GitHub Actions workflow in `.github/workflows/deploy.yml`, which:
+
+1. Runs `terraform apply` to provision or update all infrastructure
+2. Captures Terraform outputs (API URL, Cognito IDs, S3 bucket, CloudFront ID)
+3. Builds the Next.js app with the correct `NEXT_PUBLIC_*` environment variables injected at build time
+4. Syncs the static output to the S3 frontend bucket
+5. Invalidates the CloudFront distribution
+
+No manual frontend configuration is needed — the build always uses live Terraform output values.
+
+---
+
+## Validation
+
 ```bash
-npm install
-npm run dev
+./validate.sh    # lint + syntax check (Git Bash / Linux / macOS)
 ```
 
-**Backend (Local Simulation)**:
-```bash
-pip install flask boto3
-python backend/local_server.py
-```
-Open [http://localhost:3000](http://localhost:3000).
+---
 
-## 🛡️ Admins & Quotas
+## License
 
-By default, all users are limited to 50 messages/day. To grant unlimited access:
+MIT — see [LICENSE](LICENSE)
 
-1. Go to AWS Console -> Cognito -> User Pools.
-2. Select your user -> Groups.
-3. Add user to the **"Admins"** group.
-
-## ✅ Validation
-
-Run the project validation script to check linting and syntax:
-
-```bash
-# Git Bash / Linux
-./validate.sh
-```
-
-## AWS Deployment Setup
-
-### Prerequisites
-1. AWS Account
-2. GitHub Repository
-
-### Manual Steps
-1. **AWS Identity**: Create an IAM User with access to app services.
-2. **GitHub Secrets**: Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to your repo settings.
-   - **Custom Domain (Optional)**: Add `DOMAIN_NAME` and `CERTIFICATE_ARN` (US-East-1 ACM Cert) to automatically configure your custom domain on deploy.
-3. **Terraform State**: 
-   - Create S3 bucket with blocked public access.
-   - The backend configuration in `terraform/provider.tf` should be set to use this bucket.
-
-### Deployment
-Push to `main` branch to trigger the GitHub Action.
