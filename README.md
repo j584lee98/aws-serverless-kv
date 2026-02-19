@@ -123,6 +123,22 @@ No manual frontend configuration is needed — the build always uses live Terraf
 
 ---
 
+## Screenshots
+
+**Login**
+
+![Login](screenshots/login.png)
+
+**Sign Up**
+
+![Sign Up](screenshots/signup.png)
+
+**Main**
+
+![Main](screenshots/main.png)
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
