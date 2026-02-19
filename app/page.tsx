@@ -443,10 +443,12 @@ function ChatInterface() {
             <div className="bg-blue-600 p-2 rounded-lg shadow-sm">
               <BotIcon />
             </div>
-            <h1 className="text-lg font-bold text-gray-800">Knowledge Vault AI</h1>
+            <div>
+              <h1 className="text-lg font-bold text-gray-800">Knowledge Vault</h1>
+              <p className="text-xs text-gray-400">{DAILY_MSG_LIMIT} messages / day</p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-400 hidden sm:block">{DAILY_MSG_LIMIT} messages / day</span>
             <button
               onClick={signOut}
               className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-200 transition-colors"
