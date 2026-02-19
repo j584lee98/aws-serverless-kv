@@ -22,6 +22,7 @@ import json
 import os
 import re
 import time
+import urllib.parse
 import boto3
 from botocore.exceptions import ClientError
 
@@ -313,8 +314,8 @@ def lambda_handler(event, context):
 
     for record in event.get("Records", []):
         bucket = record["s3"]["bucket"]["name"]
-        # S3 URL-encodes the key (spaces → +, special chars → %XX)
-        key = record["s3"]["object"]["key"].replace("+", " ")
+        # S3 URL-encodes the key (spaces → +, other chars → %XX)
+        key = urllib.parse.unquote_plus(record["s3"]["object"]["key"])
 
         print(f"Processing s3://{bucket}/{key}")
 
@@ -354,8 +355,10 @@ def lambda_handler(event, context):
             print(f"Extracted {len(raw_text)} characters from {filename}")
 
             if not raw_text.strip():
-                print(f"No text content found in {filename}, skipping")
-                results.append({"key": key, "status": "skipped", "reason": "empty"})
+                msg = f"No extractable text found in '{filename}'."
+                print(msg)
+                _update_status(user_id, key, "error", error=msg)
+                results.append({"key": key, "status": "error", "error": msg})
                 continue
 
             # 2. Delete stale chunks from a previous upload of the same file

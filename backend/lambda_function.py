@@ -370,16 +370,17 @@ def lambda_handler(event, context):
         
         # API Gateway HTTP API with JWT Authorizer puts claims in requestContext
         # Handle both v2.0 (inside 'jwt') and v1.0 (direct in 'authorizer') payload formats
+        claims = {}
         if 'requestContext' in event and 'authorizer' in event['requestContext']:
             auth_context = event['requestContext']['authorizer']
             
             # Try v2.0 structure first
             jwt = auth_context.get('jwt')
             if jwt and 'claims' in jwt:
-                claims = jwt.get('claims')
+                claims = jwt.get('claims') or {}
             # Fallback to v1.0 structure (or direct claims)
             elif 'claims' in auth_context:
-                claims = auth_context.get('claims')
+                claims = auth_context.get('claims') or {}
             
             if claims:
                 user_id = claims.get('sub') # standard cognito user id
@@ -403,11 +404,9 @@ def lambda_handler(event, context):
         if not path and not raw_path:
             path = event.get('path', '') 
         
-        print(f"DEBUG: path={path}, rawPath={raw_path}")
-
         # For HTTP API, path usually contains e.g. /documents
         if '/documents' in path or '/documents' in raw_path:
-            return handle_documents(event, user_id, claims if 'claims' in locals() else {}, headers)
+            return handle_documents(event, user_id, claims, headers)
         
         # Block unauthenticated callers from the chat endpoint
         if user_id == 'anonymous':
@@ -433,7 +432,7 @@ def lambda_handler(event, context):
             return {
                 'statusCode': 400,
                 'headers': headers,
-                'body': json.dumps({'error': 'No body provided for Chatbot request (Fallthrough)'})
+                'body': json.dumps({'error': 'Request body is required'})
             }
             
         if not user_message:
@@ -470,9 +469,9 @@ def lambda_handler(event, context):
                 }
             ],
             "inferenceConfig": {
-                "max_new_tokens": 512,
+                "maxTokens": 512,
                 "temperature": 0.5,
-                "top_p": 0.9
+                "topP": 0.9
             }
         })
         
